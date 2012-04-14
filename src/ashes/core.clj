@@ -16,6 +16,19 @@
 
 (def ordering ["read" "later" "new"])
 
+(defn mv
+  "Moves a File to another File (by copying and deleting)"
+  [src dst]
+  (io/copy src dst)
+  (io/delete-file src))
+
+(defn find-name
+  "Given a root path and a file name, find that file under any of the
+  subdirectories of root"
+  [root file]
+  (first (filter #(= file (.getName %))
+                 (file-seq root))))
+
 (defn relative-name
   "Given a file and the directory it is rooted under, return just the relative
   path as a String."
@@ -97,8 +110,8 @@
   (let [merged (merge-with union kindle computer)]
     (into {} (map #(vector (key %)
                            ; filter out all files in higher priority collections
-                           (filter (complement (moved-files merged (key %)))
-                                   (val %)))
+                           (set (filter (complement (moved-files merged (key %)))
+                                   (val %))))
                   merged))))
 
 (defn collection-str
@@ -106,4 +119,31 @@
   [collection]
   (json/json-str (zipmap (map #(str % "@en-US") (keys collection))
                          (map #(hash-map "items" (map document->hash %) "lastAccess" 0) (vals collection)))))
+
+(defn update-computer!
+  "Move files on computer to reflect the new state of the collections"
+  [collection c-root]
+  (doseq [[coll files] collection]
+    (doseq [file files]
+      (let [c-file (io/file c-root coll file)]
+        (when (not (.exists c-file))
+          (if-let [old-file (find-name c-root file)]
+            (mv old-file c-file)
+            (throw (java.io.IOException. (str "Can't find" file "to move into place!")))))))))
+
+(defn computer->kindle!
+  "Files from the computer to the kindle when the file is not yet on the kindle.
+  'split' files are first pre-processed for optimal kindle viewing.
+  
+  collections is the merged collections map
+  c-root is the root directory on the computer, which reflects the collections map
+  k-root is the root directory on the kindle, which has not yet been updated
+  "
+  [collection c-root k-root]
+  (doseq [[coll files] collection]
+    (doseq [file files]
+      (let [c-file (io/file c-root coll file)
+            k-file (io/file k-root "documents" file)]
+        (when (not (.exists k-file))
+          (io/copy c-file k-file))))))
 

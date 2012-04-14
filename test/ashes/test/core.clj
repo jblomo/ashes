@@ -16,3 +16,12 @@
          {"new" #{"n-split.pdf"}
           "later" #{"l-split.pdf"}
           "read" #{"yay.pdf" "r-split.pdf"}})))
+
+(deftest merge-files
+  (let [cf (computer-files (resource-file "computer"))
+        kf (kindle-files (resource-file "kindle"))
+        merged (merge-collections cf kf)]
+    (is (= merged
+           {"new" #{"n-split.pdf" "my-new.pdf"}
+            "later" #{"l-split.pdf"}
+            "read" #{"yay.pdf" "r-split.pdf"}}))))
