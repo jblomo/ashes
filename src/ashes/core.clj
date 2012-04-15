@@ -1,149 +1,37 @@
 (ns ashes.core
-  (:use [clojure.set :only (union)])
-  (:require [clojure.java.io :as io]
-            [clojure.data.json :as json])
-  (:import [java.security MessageDigest]
-           [java.math BigInteger]
-           [java.io File]))
+  (:use [ashes.file-management]
+        [clojure.tools.cli :only (cli)]
+        [clojure.tools.logging :only (info error)])
+  (:require [clojure.java.io :as io])
+  (:import [java.io File]))
 
-(defn -main [& args]
-  (println (interpose " " (-> args
-                            first
-                            io/as-file
-                            (.listFiles)))))
+(defn -main [& argv]
+  (let [[options args banner]
+           (cli argv
+                ["-h" "--help" "Show help" :default false :flag true]
+                ["-k" "--kindle-root" "Path to mount point of kindle device" :parse-fn #(File. %)]
+                ["-c" "--computer-root" "Path to documents stored on computer" :parse-fn #(File. %)])]
+    (when (or (:help options)
+              (not (and (:kindle-root options) (:computer-root options))))
+      (println banner)
+      (System/exit 0))
 
-(def prefix "/mnt/us/documents/")
+    (info "Syncing" (:computer-root options) "=>"
+          (:kindle-root options))
 
-(def ordering ["read" "later" "new"])
+    (let [cf (computer-files (:computer-root options))
+          kf (kindle-files   (:kindle-root options))
+          merged (merge-collections cf kf)
+          merged-collection-str (collection-str merged)]
+      (info "Updated collections:" merged)
 
-(defn mv
-  "Moves a File to another File (by copying and deleting)"
-  [src dst]
-  (io/copy src dst)
-  (io/delete-file src))
+      (update-computer! merged (:computer-root options))
+      (info "Computer updated")
 
-(defn find-name
-  "Given a root path and a file name, find that file under any of the
-  subdirectories of root"
-  [root file]
-  (first (filter #(= file (.getName %))
-                 (file-seq root))))
+      (computer->kindle! merged
+                         (:computer-root options)
+                         (:kindle-root options))
+      (info "New files copied")
 
-(defn relative-name
-  "Given a file and the directory it is rooted under, return just the relative
-  path as a String."
-  [file root]
-  (.substring (str file) (count (str root))))
-
-(defn hash-name
-  "Given a file, return the string used to hash it for collections.json"
-  [file]
-  (str prefix file))
-
-(defn str->sha1
-  "Return the hex SHA1 digest of a string"
-  [string]
-  (->> (.getBytes string)
-    (.digest (MessageDigest/getInstance "SHA-1"))
-    (BigInteger. 1 )
-    (format "%40x")))
-
-(defn document->hash
-  "Given a file, return the sha1 hash of the kindle filename. Note: kindle
-  hashes start with asterix for some reason."
-  [file]
-  (str \*
-       (str->sha1 (hash-name file))))
-
-(defn readable?
-  "Given a file, return whether it is readable on the kindle"
-  [file]
-  (and
-    (.isFile file)
-    (some #(.endsWith (.getName file) (str \. %)) ["pdf" "ps"])))
-
-(defn computer-files
-  "Given a directory, returns a map of levels to sets of documents.  Levels are
-  implemented as subdirectories.  Currently, levels should be:
-  new
-  later
-  read
-  "
-  [dir]
-  (into {} (for [subdir (filter #(.isDirectory %) (.listFiles dir))]
-             [(.getName subdir) (into #{} (map #(.getName %)
-                                               (filter readable? (.listFiles subdir))))])))
-
-(defn read-collections
-  "Given a collections file, return a normalized version of it.
-  collection-name: {items: [hashes], lastAccess: num}"
-  [file]
-  (let [collections (json/read-json (io/reader file) false)]
-    (zipmap (map #(first (.split % "@")) (keys collections))
-            (vals collections))))
-
-(defn kindle-files
-  "Given the root of a kindle directory, return a map of levels to sets of
-  documents.  Levels are implemented in the collections.json file."
-  [kindle-root]
-  (let [doc-dir (File. kindle-root "documents")
-        documents (filter readable? (file-seq doc-dir))
-        collections (read-collections (File. kindle-root "system/collections.json"))
-        sig-to-doc (into {} (for [doc documents]
-                              [(document->hash (.getName doc)) doc]))]
-    (into {} (for [[cname cinfo] collections]
-               [cname (into #{} (map (comp #(.getName %) sig-to-doc)
-                                     (cinfo "items")))]))))
-
-(defn moved-files
-  "For a given map of collections and collection name, return all the files that
-  are in a higher priority"
-  [collections cname]
-  (let [higher (take-while (complement #{cname}) ordering)]
-    (apply union (map collections higher))))
-
-(defn merge-collections
-  "Given the state of the computer and kindle as maps of collection_name=>files,
-  return a merged state that respects the priority of the collection.  So if a
-  document has been read anywhere, it is in the read collection."
-  [kindle computer]
-  (let [merged (merge-with union kindle computer)]
-    (into {} (map #(vector (key %)
-                           ; filter out all files in higher priority collections
-                           (set (filter (complement (moved-files merged (key %)))
-                                   (val %))))
-                  merged))))
-
-(defn collection-str
-  "Return the JSON string used by Kindle to track collections"
-  [collection]
-  (json/json-str (zipmap (map #(str % "@en-US") (keys collection))
-                         (map #(hash-map "items" (map document->hash %) "lastAccess" 0) (vals collection)))))
-
-(defn update-computer!
-  "Move files on computer to reflect the new state of the collections"
-  [collection c-root]
-  (doseq [[coll files] collection]
-    (doseq [file files]
-      (let [c-file (io/file c-root coll file)]
-        (when (not (.exists c-file))
-          (if-let [old-file (find-name c-root file)]
-            (mv old-file c-file)
-            (throw (java.io.IOException. (str "Can't find" file "to move into place!")))))))))
-
-(defn computer->kindle!
-  "Files from the computer to the kindle when the file is not yet on the kindle.
-  'split' files are first pre-processed for optimal kindle viewing.
-  
-  collections is the merged collections map
-  c-root is the root directory on the computer, which reflects the collections map
-  k-root is the root directory on the kindle, which has not yet been updated
-  "
-  [collection c-root k-root]
-  (doseq [[coll files] collection]
-    (doseq [file files]
-      (let [c-file (io/file c-root coll file)
-            k-file (io/file k-root "documents" file)]
-        (when (not (.exists k-file))
-          (io/copy c-file k-file))))))
-
+      (write-collections! merged (:kindle-root options))
+      (info "Kindle updated"))))
