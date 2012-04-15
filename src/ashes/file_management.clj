@@ -10,15 +10,15 @@
 (defn- mv
   "Moves a File to another File (by copying and deleting)"
   [src dst]
-  (io/copy src dst)
-  (io/delete-file src))
+  (or (.renameTo src dst)
+      (throw (java.io.IOException. (str "Can't move" src "to" dst)))))
 
 (defn- kindle-copy
   "Copies files to the kindle in the preferred format (eg. 2 column -> 1 column translation)"
   [src dst]
   (cond
     ; 2 column
-    (.endsWith (.name src) "-2c.pdf")
+    (.endsWith (.getName src) "-2c.pdf")
     (briss/split! src dst)
 
     ;default
@@ -76,7 +76,7 @@
              [(.getName subdir) (into #{} (map #(.getName %)
                                                (filter readable? (.listFiles subdir))))])))
 
-(defn- read-collections
+(defn read-collections
   "Given a collections file, return a normalized version of it.
   collection-name: {items: [hashes], lastAccess: num}"
   [file]
