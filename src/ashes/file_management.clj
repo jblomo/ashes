@@ -1,5 +1,6 @@
 (ns ashes.file-management
-  (:use [clojure.set :only (union)])
+  (:use [clojure.set :only (union)]
+        [clojure.tools.logging :only (info error)])
   (:require [clojure.java.io :as io]
             [clojure.data.json :as json]
             [ashes.briss :as briss])
@@ -19,7 +20,9 @@
   (cond
     ; 2 column
     (.endsWith (.getName src) "-2c.pdf")
-    (briss/split! src dst)
+    (try (briss/split! src dst)
+      (catch at.laborg.briss.exception.CropException e
+        (error (str "Converting" src "failed:" e))))
 
     ;default
     true
@@ -156,6 +159,7 @@
       (let [c-file (io/file c-root coll file)
             k-file (io/file k-root "documents" file)]
         (when (not (.exists k-file))
+          (info "Copying to kindle:" c-file k-file)
           (kindle-copy c-file k-file))))))
 
 (defn write-collections!
