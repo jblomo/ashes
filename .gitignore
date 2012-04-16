@@ -3,6 +3,7 @@
 *sw[po]
 /lib
 /classes
+/target
 /native
 /.lein-failures
 /checkouts
