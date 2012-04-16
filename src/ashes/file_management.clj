@@ -51,7 +51,7 @@
   (->> (.getBytes string)
     (.digest (MessageDigest/getInstance "SHA-1"))
     (BigInteger. 1 )
-    (format "%40x")))
+    (format "%040x")))
 
 (defn- document->hash
   "Given a file, return the sha1 hash of the kindle filename. Note: kindle
@@ -83,7 +83,10 @@
   "Given a collections file, return a normalized version of it.
   collection-name: {items: [hashes], lastAccess: num}"
   [file]
-  (let [collections (json/read-json (io/reader file) false)]
+  (let [input (if (.exists file)
+                (io/reader file)
+                "{}")
+        collections (json/read-json input false)]
     (zipmap (map #(first (.split % "@")) (keys collections))
             (vals collections))))
 
@@ -100,10 +103,14 @@
         documents (filter readable? (file-seq doc-dir))
         collections (read-collections (collections-file kindle-root))
         sig-to-doc (into {} (for [doc documents]
-                              [(document->hash (.getName doc)) doc]))]
+                              [(document->hash (.getName doc)) doc]))
+        map-sigs (fn [sigs] (->> sigs
+                              (map sig-to-doc)
+                              (filter boolean) ; TODO why are there signatures that don't map to a file?
+                              (map #(.getName %))
+                              set))]
     (into {} (for [[cname cinfo] collections]
-               [cname (into #{} (map (comp #(.getName %) sig-to-doc)
-                                     (cinfo "items")))]))))
+               [cname (map-sigs (cinfo "items"))]))))
 
 (def ^:private ordering
   "Priority ordering: conflict resolution when collections don't match betwen computer and kindle."
