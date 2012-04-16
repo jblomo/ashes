@@ -7,6 +7,7 @@ are several Kindle Collections and syncing managers out there but I wanted
 something a little different:
 
 - Open Source
+- works on Linux
 - Convert 2 column PDFs to 1 column for optimized Kindle reading
 - Workflow for reading: documents are in 1 of 'new', 'later', or 'read'
 collections.
@@ -18,9 +19,15 @@ This is an ALPHA release.
 ## Usage
 
      mount /dev/sdc1 /mnt/kindle
+     lein2 deps
+     # mvn install:install-file missing jars
      lein2 run -k /mnt/kindle/ -c ~/Documents/cs-papers/
      umount /mnt/kindle && sudo eject /dev/sdc
      # restart (not just turn off!) kindle
+
+ashes has some dependencies on jars which are not redistributable (eg
+jai-imageio).  You'll need to download the jars from the author and install them
+in your local maven repository to satisfy the dependencies.
 
 ashes operates on filesystems, so the kindle device must be mounted for
 everything to work.  If you `ls /mnt/kindle` you should see subdirectories
