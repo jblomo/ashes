@@ -48,7 +48,7 @@ device.  This can be done by the options `Home -> Menu -> Settings -> Menu ->
 Restart` or holding the on/off switch for 15 seconds.  After restarting, Kindle
 will take a couple minutes to reload the collections.
 
-Reading PDFs can be more easily read in Landscape mode or, for split PDFs, by
+PDFs can be more easily read in Landscape mode or, for split PDFs, by
 zooming in to "actual size."
 
 After reading a paper on the Kindle, place it in the "read" collection and the
