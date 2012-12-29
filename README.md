@@ -14,20 +14,14 @@ collections.
 - If a paper is 'read' on any device, it will be moved to the 'read' collection
 on every device.
 
-This is an ALPHA release.
+This is an BETA release.
 
 ## Usage
 
      mount /dev/sdc1 /mnt/kindle
-     lein2 deps
-     # mvn install:install-file missing jars
-     lein2 run -k /mnt/kindle/ -c ~/Documents/cs-papers/
+     lein2 run -- -k /mnt/kindle/ -c ~/Dropbox/cs-papers/
      umount /mnt/kindle && sudo eject /dev/sdc
      # restart (not just turn off!) kindle
-
-ashes has some dependencies on jars which are not redistributable (eg
-jai-imageio).  You'll need to download the jars from the author and install them
-in your local maven repository to satisfy the dependencies.
 
 ashes operates on filesystems, so the kindle device must be mounted for
 everything to work.  If you `ls /mnt/kindle` you should see subdirectories
